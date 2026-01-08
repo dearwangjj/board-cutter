@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>人造板甲醛承载限量计算器 - GB/T 39598-2021</title>
+  <!-- jsPDF + html2canvas -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    body {
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 16px;
+      background: #f8fafc;
+      color: #333;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      margin-bottom: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #1a73e8;
+      font-size: 22px;
+      margin: 10px 0;
+    }
+    .btn-group {
+      text-align: center;
+      margin: 16px 0;
+    }
+    button {
+      margin: 6px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .calc-btn { background: #1a73e8; color: white; }
+    .compare-btn { background: #ff9800; color: white; }
+    .pdf-btn { background: #d81b60; color: white; }
+    .share-btn { background: #07c260; color: white; }
+    .room {
+      padding: 14px;
+      margin: 14px 0;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #f9fbfd;
+    }
+    input, select {
+      padding: 6px 10px;
+      margin: 4px 6px 4px 0;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 14px;
+      width: 100px;
+    }
+    label {
+      display: inline-block;
+      width: 90px;
+      font-size: 13px;
+      color: #555;
+      text-align: right;
+      margin-right: 8px;
+    }
+    .result-box {
+      padding: 14px;
+      margin: 18px 0;
+      border-radius: 10px;
+      font-weight: bold;
+      text-align: center;
+      font-size: 16px;
+    }
+    .safe { background: #e6f4ea; color: #137333; }
+    .unsafe { background: #fce8e6; color: #c62828; }
+    .note {
+      font-size: 12px;
+      color: #888;
+      margin-top: 10px;
+      text-align: center;
+    }
+    .collapse {
+      font-size: 13px;
+      color: #1a73e8;
+      margin-top: 12px;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .export-area { display: none; }
+    ul { padding-left: 20px; margin: 8px 0; }
+    .projection-item {
+      margin: 12px 0;
+      padding: 12px;
+      background: #f9fbfd;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h1>人造板甲醛承载限量计算器</h1>
+  <p style="text-align:center;color:#666;">依据国家标准《GB/T 39598-2021》</p>
+
+  <div class="btn-group">
+    <button onclick="addRoom()">➕ 添加房间</button>
+    <button onclick="calculate()" class="calc-btn">🧮 计算最大安全用量</button>
+    <button onclick="showProjection()" class="compare-btn">📏 对比销售投影面积</button>
+    <button onclick="exportToPDF()" class="pdf-btn">📥 导出PDF报告</button>
+    <button onclick="sharePage()" class="share-btn">↗️ 微信分享</button>
+  </div>
+
+  <div id="rooms"></div>
+  <div id="projectionSection" style="display:none;"></div>
+  <div id="resultDisplay"></div> <!-- 始终只显示最新结果 -->
+
+  <div class="note">
+    注：本工具用于估算室内人造板的最大安全使用面积。实际装修请结合通风、材料叠加等因素综合评估。
+  </div>
+
+  <div class="collapse" onclick="toggleComplexityHelp()">ℹ️ 结构复杂度系数说明（供参考）</div>
+  <div id="complexityHelp" style="display:none;margin-top:12px;font-size:13px;line-height:1.6;">
+    <strong>结构复杂度影响说明（GB/T 39598-2021 附录A）：</strong><br>
+    • 简单结构（如仅地板+少量柜体）：换气系数 n 可取 0.5～1.0<br>
+    • 中等复杂（全屋定制+吊顶）：建议 n = 0.5（保守设计）<br>
+    • 高度复杂（密闭空间、大量板材集中）：需降低 n 值或增加通风<br>
+    • 本工具默认按 n=0.5 计算，用户可根据实际情况调整。
+  </div>
+</div>
+
+<!-- 隐藏区域：用于PDF导出 -->
+<div id="fullReport" class="export-area">
+  <h1 style="text-align:center;color:#1a73e8;">GB/T 39598-2021 甲醛承载限量计算报告</h1>
+  <div id="reportContent"></div>
+</div>
+
+<script>
+let roomCount = 0;
+const gradeMap = { enf: 0.03, e0: 0.06, e1: 0.15 };
+const cityData = {
+  haerbin:   { T: 5.0,  RH: 63, n: 0.5 },
+  beijing:   { T: 13.0, RH: 52, n: 0.5 },
+  shanghai:  { T: 17.0, RH: 75, n: 0.5 },
+  guangzhou: { T: 22.0, RH: 73, n: 0.5 },
+  chengdu:   { T: 16.0, RH: 82, n: 0.5 },
+  haikou:    { T: 24.0, RH: 84, n: 0.5 }
+};
+
+function toggleComplexityHelp() {
+  const el = document.getElementById('complexityHelp');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function addRoom() {
+  roomCount++;
+  const id = `r${roomCount}`;
+  const html = `
+    <div class="room" id="${id}">
+      <div>
+        <label>房间长度(L/m):</label><input type="number" value="4.0" step="0.1" min="1" data-f="L">
+        <label>房间宽度(W/m):</label><input type="number" value="3.5" step="0.1" min="1" data-f="W">
+        <label>房间高度(H/m):</label><input type="number" value="2.8" step="0.1" min="2" data-f="H">
+        <button type="button" style="padding:2px 8px;font-size:12px;background:#f44336;color:white;border:none;border-radius:4px;" onclick="delRoom('${id}')">×</button>
+      </div>
+      <div style="margin-top:10px;">
+        <label>环境参数:</label>
+        <select data-f="city" onchange="toggleCustom(this,'${id}')">
+          <option value="">请选择城市（自动填温湿度）</option>
+          <option value="haerbin">哈尔滨</option>
+          <option value="beijing">北京</option>
+          <option value="shanghai">上海</option>
+          <option value="guangzhou">广州</option>
+          <option value="chengdu">成都</option>
+          <option value="haikou">海口</option>
+          <option value="custom">自定义温湿度与换气次数</option>
+        </select>
+        <div id="cust${id}" style="display:none;margin-top:12px;padding:12px;background:#f0f7ff;border-radius:8px;">
+          <label>温度(℃):</label><input type="number" value="25" step="0.1" data-f="T">
+          <label>湿度(%):</label><input type="number" value="50" min="0" max="100" data-f="RH">
+          <br><br>
+          <label>换气次数(n):</label>
+          <input type="number" value="0.5" step="0.1" min="0.1" max="3" data-f="n">
+          <span style="font-size:12px;color:#666;margin-left:10px;">（普通住宅建议0.5）</span>
+        </div>
+      </div>
+      <div class="boards" id="bds${id}" style="margin-top:12px;">
+        <div>
+          <select data-f="g">
+            <option value="enf">ENF级（≤0.03 mg/m²·h）</option>
+            <option value="e0">E0级（≤0.06 mg/m²·h）</option>
+            <option value="e1">E1级（≤0.15 mg/m²·h）</option>
+          </select>
+          <input type="number" placeholder="板材面积(m²)" step="0.1" min="0" data-f="a">
+        </div>
+      </div>
+      <button type="button" style="font-size:13px;padding:4px 8px;margin-top:8px;background:#e0e0e0;border:none;border-radius:4px;" onclick="addBoard('${id}')">➕ 添加更多板材类型</button>
+    </div>
+  `;
+  document.getElementById('rooms').insertAdjacentHTML('beforeend', html);
+}
+
+function delRoom(id) {
+  document.getElementById(id).remove();
+}
+
+function toggleCustom(sel, id) {
+  document.getElementById(`cust${id}`).style.display = sel.value === 'custom' ? 'block' : 'none';
+}
+
+function addBoard(id) {
+  const c = document.getElementById(`bds${id}`);
+  c.insertAdjacentHTML('beforeend', 
+    `<div style="margin-top:8px;">
+      <select data-f="g">
+        <option value="enf">ENF级（≤0.03 mg/m²·h）</option>
+        <option value="e0">E0级（≤0.06 mg/m²·h）</option>
+        <option value="e1">E1级（≤0.15 mg/m²·h）</option>
+      </select>
+      <input type="number" placeholder="面积(m²)" step="0.1" min="0" data-f="a">
+      <button type="button" style="padding:2px 8px;font-size:12px;background:#aaa;color:white;border:none;border-radius:4px;" onclick="this.parentElement.remove()">−</button>
+    </div>`
+  );
+}
+
+// ===== 核心：每次计算前清空结果区域 =====
+async function calculate() {
+  document.getElementById('resultDisplay').innerHTML = '';
+  document.getElementById('projectionSection').style.display = 'none';
+
+  const rooms = document.querySelectorAll('.room');
+  if (!rooms.length) { alert("请先添加至少一个房间"); return; }
+
+  let totalUsed = 0, totalSafe = 0;
+  let details = [], fullLogs = [];
+
+  for (const r of rooms) {
+    const L = parseFloat(r.querySelector('[data-f="L"]').value);
+    const W = parseFloat(r.querySelector('[data-f="W"]').value);
+    const H = parseFloat(r.querySelector('[data-f="H"]').value);
+    if (!(L > 0 && W > 0 && H > 0)) { alert("房间尺寸必须大于0"); return; }
+    const V = L * W * H;
+
+    let T, RH, n, envSrc;
+    const city = r.querySelector('[data-f="city"]').value;
+    if (city && city !== 'custom') {
+      ({T, RH, n} = cityData[city]);
+      envSrc = city;
+    } else {
+      T = parseFloat(r.querySelector('[data-f="T"]').value);
+      RH = parseFloat(r.querySelector('[data-f="RH"]').value);
+      n = parseFloat(r.querySelector('[data-f="n"]').value);
+      if (!(T >= -20 && T <= 50 && RH >= 0 && RH <= 100 && n > 0)) { 
+        alert("请检查自定义环境参数是否合理"); 
+        return; 
+      }
+      envSrc = "自定义";
+    }
+
+    const K = Math.exp(0.12 * (T - 23) + 0.015 * (RH - 50));
+    
+    const boards = Array.from(r.querySelectorAll('.boards > div'));
+    let areaSum = 0, weightedE = 0, boardList = [];
+    for (const b of boards) {
+      const aStr = b.querySelector('[data-f="a"]').value;
+      if (!aStr) continue;
+      const a = parseFloat(aStr);
+      if (a <= 0) continue;
+      const g = b.querySelector('[data-f="g"]').value;
+      const E0 = gradeMap[g];
+      weightedE += a * E0 * K;
+      areaSum += a;
+      boardList.push({g, a, E0});
+    }
+    if (areaSum === 0) { alert("请填写至少一种板材的面积"); return; }
+
+    const E_avg = weightedE / areaSum;
+    const S_max = (0.08 * n * V) / E_avg;
+
+    totalUsed += areaSum;
+    totalSafe += S_max;
+
+    const isSafe = areaSum <= S_max;
+    details.push({name:`房间${r.id.slice(1)}`, used:areaSum, safe:S_max, isSafe});
+
+    let log = `<h3>【房间${r.id.slice(1)}】</h3>`;
+    log += `<p>房间尺寸：长 ${L} m × 宽 ${W} m × 高 ${H} m → 体积 V = ${V.toFixed(2)} m³</p>`;
+    log += `<p>环境参数来源：${envSrc}（温度 = ${T} ℃，湿度 = ${RH} %，换气次数 n = ${n}）</p>`;
+    log += `<p>温湿度修正系数 K = exp[0.12×(${T}−23) + 0.015×(${RH}−50)] = ${K.toFixed(4)}</p>`;
+    log += `<p>所用人造板类型及面积：</p><ul>`;
+    boardList.forEach(b => {
+      const name = b.g === 'enf' ? 'ENF级' : b.g === 'e0' ? 'E0级' : 'E1级';
+      log += `<li>${name}：${b.a.toFixed(1)} m²（极限释放量 E₀ = ${b.E0} mg/m²·h）</li>`;
+    });
+    log += `</ul>`;
+    log += `<p>加权平均释放强度 E_avg = ${E_avg.toFixed(4)} mg/m²·h</p>`;
+    log += `<p>最大安全使用面积 S_max = (0.08 × ${n} × ${V.toFixed(2)}) ÷ ${E_avg.toFixed(4)} = ${S_max.toFixed(2)} m²</p>`;
+    log += `<p>当前使用面积：${areaSum.toFixed(1)} m² → ${isSafe ? '✅ 安全' : '⚠️ 超限'}</p>`;
+    fullLogs.push(log);
+  }
+
+  const overallSafe = totalUsed <= totalSafe;
+  const msg = overallSafe 
+    ? `✅ 整体安全！总使用面积 ${totalUsed.toFixed(1)} m² ≤ 最大承载面积 ${totalSafe.toFixed(1)} m²`
+    : `⚠️ 整体超限！超出 ${(totalUsed - totalSafe).toFixed(1)} m²`;
+
+  document.getElementById('resultDisplay').innerHTML = 
+    `<div class="result-box ${overallSafe?'safe':'unsafe'}">${msg}</div>`;
+
+  window.calcResult = { details, fullLogs, totalUsed, totalSafe, overallSafe };
+}
+
+// ===== 修正后的投影对比功能 =====
+function showProjection() {
+  if (!window.calcResult) { alert("请先点击【计算最大安全用量】！"); return; }
+  
+  document.getElementById('resultDisplay').innerHTML = '';
+  let html = '<h3 style="margin:12px 0;color:#1a73e8;">请输入各房间销售提供的投影面积及家具类型</h3>';
+  
+  const typeOptionsTemplate = (roomId) => `
+    <select id="type_${roomId}" onchange="updateFactor(this)">
+      <option value="cabinet">衣柜/书柜（系数≈3.5）</option>
+      <option value="lowcabinet">电视柜/矮柜（系数≈3.0）</option>
+      <option value="floor">地板（系数=1.0）</option>
+      <option value="wall">墙板/吊顶（系数≈1.1）</option>
+      <option value="custom">自定义系数</option>
+    </select>
+    <input type="number" id="factor_${roomId}" placeholder="系数" step="0.1" min="0.5" max="6" style="width:80px;display:none;" value="3.5">
+    <span style="font-size:12px;color:#666;margin-left:6px;">→ 释放面积 ≈ 投影面积 × 系数</span>
+  `;
+  
+  html += window.calcResult.details.map(d => {
+    const roomId = d.name.replace(/\s+/g, '_');
+    return `
+      <div class="projection-item">
+        <strong>${d.name}</strong><br>
+        <label>投影面积(m²):</label>
+        <input type="number" id="p_${roomId}" placeholder="如：4.5" step="0.1" style="width:100px;">
+        ${typeOptionsTemplate(roomId)}
+      </div>
+    `;
+  }).join('');
+  
+  html += `<button onclick="doCompare()" style="margin-top:12px;background:#ff9800;color:white;padding:8px 16px;border:none;border-radius:6px;font-weight:bold;">🔍 换算后对比安全性</button>`;
+  document.getElementById('projectionSection').innerHTML = html;
+  document.getElementById('projectionSection').style.display = 'block';
+}
+
+function updateFactor(sel) {
+  const roomId = sel.id.replace('type_', '');
+  const factorInput = document.getElementById(`factor_${roomId}`);
+  if (sel.value === 'custom') {
+    factorInput.style.display = 'inline';
+  } else {
+    factorInput.style.display = 'none';
+    factorInput.value = sel.value === 'cabinet' ? 3.5 :
+                        sel.value === 'lowcabinet' ? 3.0 :
+                        sel.value === 'floor' ? 1.0 : 1.1;
+  }
+}
+
+function doCompare() {
+  if (!window.calcResult) return;
+  
+  const res = window.calcResult;
+  let allSafe = true, logs = [];
+  let totalProj = 0, totalEstRelease = 0;
+
+  for (const d of res.details) {
+    const roomId = d.name.replace(/\s+/g, '_');
+    const projInput = parseFloat(document.getElementById(`p_${roomId}`).value);
+    const factorInput = document.getElementById(`factor_${roomId}`);
+    let factor = parseFloat(factorInput.value);
+
+    if (isNaN(projInput) || projInput < 0) { 
+      alert(`请填写 ${d.name} 的投影面积`); 
+      return; 
+    }
+    if (isNaN(factor) || factor <= 0) {
+      alert(`请填写 ${d.name} 的有效换算系数`);
+      return;
+    }
+
+    const estRelease = projInput * factor;
+    totalProj += projInput;
+    totalEstRelease += estRelease;
+    
+    const safe = estRelease <= d.safe;
+    if (!safe) allSafe = false;
+    logs.push(`${d.name}: 投影 ${projInput.toFixed(1)} m² × ${factor.toFixed(1)} ≈ 释放 ${estRelease.toFixed(1)} m² vs 安全上限 ${d.safe.toFixed(1)} m² → ${safe ? '安全' : '超限'}`);
+  }
+
+  // 构建结果：先显示原始计算结论，再加对比
+  let output = `<div class="result-box ${res.overallSafe?'safe':'unsafe'}">
+    ${res.overallSafe 
+      ? `✅ 整体安全！总使用面积 ${res.totalUsed.toFixed(1)} m² ≤ 最大承载面积 ${res.totalSafe.toFixed(1)} m²`
+      : `⚠️ 整体超限！超出 ${(res.totalUsed - res.totalSafe).toFixed(1)} m²`}
+  </div>`;
+
+  const conclusion = allSafe 
+    ? `✅ 所有房间估算释放面积均在安全范围内（总投影 ${totalProj.toFixed(1)} m² → 估算释放 ${totalEstRelease.toFixed(1)} m²）`
+    : `❌ 存在超限房间！请减少用量或选择更环保板材`;
+    
+  output += `<div class="result-box ${allSafe?'safe':'unsafe'}" style="margin-top:12px;">${conclusion}</div>`;
+
+  document.getElementById('resultDisplay').innerHTML = output;
+  window.projectionLogs = logs;
+}
+
+function sharePage() {
+  const url = location.href;
+  if (navigator.share) {
+    navigator.share({ title: 'GB/T 39598-2021 甲醛承载限量计算器', url });
+  } else {
+    navigator.clipboard?.writeText(url).then(() => {
+      alert("链接已复制到剪贴板，可粘贴到微信分享");
+    }).catch(() => {
+      alert("无法复制，请手动分享此页面链接");
+    });
+  }
+}
+
+async function exportToPDF() {
+  if (!window.calcResult) { alert("请先完成计算！"); return; }
+
+  let report = `<h2>一、计算依据</h2>
+    <p>标准：《GB/T 39598-2021 基于极限甲醛释放量的人造板室内承载限量指南》</p>
+    <p>核心公式：<br>
+      S_max = (C × n × V) / (E₀ × K)<br>
+      其中 C = 0.08 mg/m³（室内甲醛浓度限值）</p>
+    <p>温湿度修正系数：<br>
+      K = exp[0.12×(T−23) + 0.015×(RH−50)]</p>
+    <p>板材极限释放量 E₀：<br>
+      ENF级 ≤ 0.03 mg/m²·h，E0级 ≤ 0.06 mg/m²·h，E1级 ≤ 0.15 mg/m²·h</p>
+
+    <h2>二、详细计算结果</h2>`;
+
+  report += window.calcResult.fullLogs.join('');
+
+  if (window.projectionLogs) {
+    report += `<h2>三、销售投影面积对比结果</h2><ul>`;
+    window.projectionLogs.forEach(l => report += `<li>${l}</li>`);
+    report += `</ul>`;
+  }
+
+  report += `<h2>四、重要说明</h2>
+    <p>• 释放表面积 ≠ 投影面积！本工具通过家具类型系数将投影面积换算为估算释放面积。</p>
+    <p>• 衣柜/书柜系数 ≈ 3.5，电视柜 ≈ 3.0，地板 = 1.0，墙板 ≈ 1.1（经验值）</p>
+    <p>• 实际释放面积可能因结构差异而不同，建议留有余量。</p>
+    <p style="margin-top:20px;font-size:12px;color:#888;">报告生成时间：${new Date().toLocaleString('zh-CN')}</p>`;
+
+  document.getElementById('reportContent').innerHTML = report;
+  document.getElementById('fullReport').style.display = 'block';
+
+  const { jsPDF } = window.jspdf;
+  const el = document.getElementById('fullReport');
+  const canvas = await html2canvas(el, { scale: 2, useCORS: true, logging: false });
+  const img = canvas.toDataURL('image/png');
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = 210;
+  const imgHeight = (canvas.height * pageWidth) / canvas.width;
+  let heightLeft = imgHeight;
+  let position = 0;
+
+  pdf.addImage(img, 'PNG', 0, position, pageWidth, imgHeight);
+  heightLeft -= 297;
+
+  while (heightLeft > 0) {
+    pdf.addPage();
+    position = heightLeft - imgHeight;
+    pdf.addImage(img, 'PNG', 0, position, pageWidth, imgHeight);
+    heightLeft -= 297;
+  }
+
+  pdf.save('GB_T_39598-2021_甲醛承载限量计算报告.pdf');
+  document.getElementById('fullReport').style.display = 'none';
+}
+
+// 初始化
+addRoom();
+</script>
+
+</body>
+</html>
