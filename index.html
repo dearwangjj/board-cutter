@@ -1,7 +1,3 @@
-<!-- 添加到 <head> 中 -->
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>人造板甲醛承载限量计算器</title>
-<link rel="icon" href="data:,">
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -104,6 +100,44 @@
       background: #f9fbfd;
       border-radius: 8px;
     }
+
+    /* ============ 新增：专业版样式 ============ */
+    .pro-section {
+      margin-top: 25px;
+      padding: 15px;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      background: #fafafa;
+    }
+    #exportPdfBtn {
+      background: #27ae60;
+    }
+    #exportPdfBtn:hover {
+      background: #219653;
+    }
+    .pay-qrcode img {
+      width: 200px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      display: block;
+      margin: 10px auto;
+    }
+    .form-link {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 8px 16px;
+      background: #07c160;
+      color: white !important;
+      text-decoration: none;
+      border-radius: 4px;
+    }
+    .form-link:hover {
+      opacity: 0.9;
+    }
+    #activateMsg {
+      min-height: 20px;
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
@@ -113,11 +147,11 @@
   <p style="text-align:center;color:#666;">依据国家标准《GB/T 39598-2021》</p>
 
   <div class="btn-group">
-    <button onclick="addRoom()">➕ 添加房间</button>
-    <button onclick="calculate()" class="calc-btn">🧮 计算最大安全用量</button>
-    <button onclick="showProjection()" class="compare-btn">📏 对比销售投影面积</button>
-    <button onclick="exportToPDF()" class="pdf-btn">📥 导出PDF报告</button>
-    <button onclick="sharePage()" class="share-btn">↗️ 微信分享</button>
+    <button id="addRoomBtn">➕ 添加房间</button>
+    <button id="calcBtn" class="calc-btn">🧮 计算最大安全用量</button>
+    <button id="compareBtn" class="compare-btn">📏 对比销售投影面积</button>
+    <button id="exportPdfBtn" class="pdf-btn">📥 导出PDF报告</button>
+    <button id="shareBtn" class="share-btn">↗️ 微信分享</button>
   </div>
 
   <div id="rooms"></div>
@@ -128,7 +162,7 @@
     注：本工具用于估算室内人造板的最大安全使用面积。实际装修请结合通风、材料叠加等因素综合评估。
   </div>
 
-  <div class="collapse" onclick="toggleComplexityHelp()">ℹ️ 结构复杂度系数说明（供参考）</div>
+  <div class="collapse" id="toggleComplexityHelp">ℹ️ 结构复杂度系数说明（供参考）</div>
   <div id="complexityHelp" style="display:none;margin-top:12px;font-size:13px;line-height:1.6;">
     <strong>结构复杂度影响说明（GB/T 39598-2021 附录A）：</strong><br>
     • 简单结构（如仅地板+少量柜体）：换气系数 n 可取 0.5～1.0<br>
@@ -136,6 +170,39 @@
     • 高度复杂（密闭空间、大量板材集中）：需降低 n 值或增加通风<br>
     • 本工具默认按 n=0.5 计算，用户可根据实际情况调整。
   </div>
+  
+  <!-- ========== 专业版功能区 ========== -->
+  
+  <!-- 升级提示（未激活时显示） -->
+  <div id="upgradePrompt" class="pro-section" style="display: none;">
+    <p>💡 <strong>专业版功能：</strong>一键导出具有计算过程的PDF 报告，可用于销售、采购或存档，仅供参考。</p>
+    
+    <h4>如何激活？</h4>
+    <ol>
+      <li>微信扫描下方二维码，支付 ¥9.9</li>
+      <li>填写激活申请表单（留微信号或邮箱）</li>
+      <li>我们将在10分钟内发送激活码给您！</li>
+    </ol>
+
+    <!-- 🔧 需要你修改：确保 pay.jpg 已上传到 GitHub 根录 -->
+    <div class="pay-qrcode">
+      <img src="pay.jpg" alt="微信收款码">
+    </div>
+
+    <!-- 🔧 需要你修改：替换成你的腾讯问卷链接 -->
+    <a href="https://wj.qq.com/s2/25486581/a4c1/" target="_blank" class="form-link">
+      📝 填写激活申请表单
+    </a>
+  </div>
+
+  <!-- 激活码输入框 -->
+  <div id="activateSection" class="pro-section" style="display: none;">
+    <label for="licenseInput">输入激活码（格式：PRO-2025-XXXX）</label>
+    <input type="text" id="licenseInput" placeholder="例如：PRO-2025-ABC123">
+    <button id="activateBtn">激活专业版</button>
+    <p id="activateMsg"></p>
+  </div>
+
 </div>
 
 <!-- 隐藏区域：用于PDF导出 -->
@@ -145,6 +212,8 @@
 </div>
 
 <script>
+// ========== 核心计算逻辑与 UI 交互函数 ==========
+
 let roomCount = 0;
 const gradeMap = { enf: 0.03, e0: 0.06, e1: 0.15 };
 const cityData = {
@@ -170,11 +239,11 @@ function addRoom() {
         <label>房间长度(L/m):</label><input type="number" value="4.0" step="0.1" min="1" data-f="L">
         <label>房间宽度(W/m):</label><input type="number" value="3.5" step="0.1" min="1" data-f="W">
         <label>房间高度(H/m):</label><input type="number" value="2.8" step="0.1" min="2" data-f="H">
-        <button type="button" style="padding:2px 8px;font-size:12px;background:#f44336;color:white;border:none;border-radius:4px;" onclick="delRoom('${id}')">×</button>
+        <button type="button" class="del-room-btn" style="padding:2px 8px;font-size:12px;background:#f44336;color:white;border:none;border-radius:4px;">×</button>
       </div>
       <div style="margin-top:10px;">
         <label>环境参数:</label>
-        <select data-f="city" onchange="toggleCustom(this,'${id}')">
+        <select data-f="city" class="city-select">
           <option value="">请选择城市（自动填温湿度）</option>
           <option value="haerbin">哈尔滨</option>
           <option value="beijing">北京</option>
@@ -184,7 +253,7 @@ function addRoom() {
           <option value="haikou">海口</option>
           <option value="custom">自定义温湿度与换气次数</option>
         </select>
-        <div id="cust${id}" style="display:none;margin-top:12px;padding:12px;background:#f0f7ff;border-radius:8px;">
+        <div class="custom-env" style="display:none;margin-top:12px;padding:12px;background:#f0f7ff;border-radius:8px;">
           <label>温度(℃):</label><input type="number" value="25" step="0.1" data-f="T">
           <label>湿度(%):</label><input type="number" value="50" min="0" max="100" data-f="RH">
           <br><br>
@@ -201,12 +270,22 @@ function addRoom() {
             <option value="e1">E1级（≤0.15 mg/m²·h）</option>
           </select>
           <input type="number" placeholder="板材面积(m²)" step="0.1" min="0" data-f="a">
+          <button type="button" class="del-board-btn" style="padding:2px 8px;font-size:12px;background:#aaa;color:white;border:none;border-radius:4px;">−</button>
         </div>
       </div>
-      <button type="button" style="font-size:13px;padding:4px 8px;margin-top:8px;background:#e0e0e0;border:none;border-radius:4px;" onclick="addBoard('${id}')">➕ 添加更多板材类型</button>
+      <button type="button" class="add-board-btn" style="font-size:13px;padding:4px 8px;margin-top:8px;background:#e0e0e0;border:none;border-radius:4px;">➕ 添加更多板材类型</button>
     </div>
   `;
   document.getElementById('rooms').insertAdjacentHTML('beforeend', html);
+  
+  // 为新房间的元素绑定事件
+  document.querySelector(`#${id} .del-room-btn`).addEventListener('click', () => delRoom(id));
+  document.querySelector(`#${id} .city-select`).addEventListener('change', (e) => toggleCustom(e.target, id));
+  document.querySelector(`#${id} .add-board-btn`).addEventListener('click', () => addBoard(id));
+  // 为初始板材行的删除按钮绑定事件
+  document.querySelector(`#${id} .del-board-btn`).addEventListener('click', function() {
+    this.parentElement.remove();
+  });
 }
 
 function delRoom(id) {
@@ -214,22 +293,35 @@ function delRoom(id) {
 }
 
 function toggleCustom(sel, id) {
-  document.getElementById(`cust${id}`).style.display = sel.value === 'custom' ? 'block' : 'none';
+  const customDiv = document.getElementById(`cust${id}`);
+  if (!customDiv) {
+    // 如果不存在 cust{id} 元素，则查找 class="custom-env"
+    const customEnv = sel.closest('.room').querySelector('.custom-env');
+    customEnv.style.display = sel.value === 'custom' ? 'block' : 'none';
+  } else {
+    customDiv.style.display = sel.value === 'custom' ? 'block' : 'none';
+  }
 }
 
 function addBoard(id) {
-  const c = document.getElementById(`bds${id}`);
-  c.insertAdjacentHTML('beforeend', 
-    `<div style="margin-top:8px;">
+  const container = document.getElementById(`bds${id}`);
+  const newBoardHtml = `
+    <div style="margin-top:8px;">
       <select data-f="g">
         <option value="enf">ENF级（≤0.03 mg/m²·h）</option>
         <option value="e0">E0级（≤0.06 mg/m²·h）</option>
         <option value="e1">E1级（≤0.15 mg/m²·h）</option>
       </select>
       <input type="number" placeholder="面积(m²)" step="0.1" min="0" data-f="a">
-      <button type="button" style="padding:2px 8px;font-size:12px;background:#aaa;color:white;border:none;border-radius:4px;" onclick="this.parentElement.remove()">−</button>
-    </div>`
-  );
+      <button type="button" class="del-board-btn" style="padding:2px 8px;font-size:12px;background:#aaa;color:white;border:none;border-radius:4px;">−</button>
+    </div>
+  `;
+  container.insertAdjacentHTML('beforeend', newBoardHtml);
+  
+  // 为新添加的删除按钮绑定事件
+  container.lastElementChild.querySelector('.del-board-btn').addEventListener('click', function() {
+    this.parentElement.remove();
+  });
 }
 
 // ===== 核心：每次计算前清空结果区域 =====
@@ -238,7 +330,10 @@ async function calculate() {
   document.getElementById('projectionSection').style.display = 'none';
 
   const rooms = document.querySelectorAll('.room');
-  if (!rooms.length) { alert("请先添加至少一个房间"); return; }
+  if (!rooms.length) { 
+    alert("请先添加至少一个房间"); 
+    return; 
+  }
 
   let totalUsed = 0, totalSafe = 0;
   let details = [], fullLogs = [];
@@ -247,7 +342,10 @@ async function calculate() {
     const L = parseFloat(r.querySelector('[data-f="L"]').value);
     const W = parseFloat(r.querySelector('[data-f="W"]').value);
     const H = parseFloat(r.querySelector('[data-f="H"]').value);
-    if (!(L > 0 && W > 0 && H > 0)) { alert("房间尺寸必须大于0"); return; }
+    if (!(L > 0 && W > 0 && H > 0)) { 
+      alert("房间尺寸必须大于0"); 
+      return; 
+    }
     const V = L * W * H;
 
     let T, RH, n, envSrc;
@@ -281,7 +379,10 @@ async function calculate() {
       areaSum += a;
       boardList.push({g, a, E0});
     }
-    if (areaSum === 0) { alert("请填写至少一种板材的面积"); return; }
+    if (areaSum === 0) { 
+      alert("请填写至少一种板材的面积"); 
+      return; 
+    }
 
     const E_avg = weightedE / areaSum;
     const S_max = (0.08 * n * V) / E_avg;
@@ -317,24 +418,30 @@ async function calculate() {
     `<div class="result-box ${overallSafe?'safe':'unsafe'}">${msg}</div>`;
 
   window.calcResult = { details, fullLogs, totalUsed, totalSafe, overallSafe };
+  
+  // 🔧 新增：每次计算后检查是否应显示专业版提示
+  updateProUI();
 }
 
 // ===== 修正后的投影对比功能 =====
 function showProjection() {
-  if (!window.calcResult) { alert("请先点击【计算最大安全用量】！"); return; }
+  if (!window.calcResult) { 
+    alert("请先点击【计算最大安全用量】！"); 
+    return; 
+  }
   
   document.getElementById('resultDisplay').innerHTML = '';
   let html = '<h3 style="margin:12px 0;color:#1a73e8;">请输入各房间销售提供的投影面积及家具类型</h3>';
   
   const typeOptionsTemplate = (roomId) => `
-    <select id="type_${roomId}" onchange="updateFactor(this)">
+    <select class="proj-type-select" data-room="${roomId}">
       <option value="cabinet">衣柜/书柜（系数≈3.5）</option>
       <option value="lowcabinet">电视柜/矮柜（系数≈3.0）</option>
       <option value="floor">地板（系数=1.0）</option>
       <option value="wall">墙板/吊顶（系数≈1.1）</option>
       <option value="custom">自定义系数</option>
     </select>
-    <input type="number" id="factor_${roomId}" placeholder="系数" step="0.1" min="0.5" max="6" style="width:80px;display:none;" value="3.5">
+    <input type="number" class="proj-factor-input" data-room="${roomId}" placeholder="系数" step="0.1" min="0.5" max="6" style="width:80px;display:none;" value="3.5">
     <span style="font-size:12px;color:#666;margin-left:6px;">→ 释放面积 ≈ 投影面积 × 系数</span>
   `;
   
@@ -344,28 +451,33 @@ function showProjection() {
       <div class="projection-item">
         <strong>${d.name}</strong><br>
         <label>投影面积(m²):</label>
-        <input type="number" id="p_${roomId}" placeholder="如：4.5" step="0.1" style="width:100px;">
+        <input type="number" class="proj-area-input" data-room="${roomId}" placeholder="如：4.5" step="0.1" style="width:100px;">
         ${typeOptionsTemplate(roomId)}
       </div>
     `;
   }).join('');
-  
-  html += `<button onclick="doCompare()" style="margin-top:12px;background:#ff9800;color:white;padding:8px 16px;border:none;border-radius:6px;font-weight:bold;">🔍 换算后对比安全性</button>`;
+
+  html += `<button id="compareNowBtn" style="margin-top:12px;background:#ff9800;color:white;padding:8px 16px;border:none;border-radius:6px;font-weight:bold;">🔍 换算后对比安全性</button>`;
   document.getElementById('projectionSection').innerHTML = html;
   document.getElementById('projectionSection').style.display = 'block';
-}
-
-function updateFactor(sel) {
-  const roomId = sel.id.replace('type_', '');
-  const factorInput = document.getElementById(`factor_${roomId}`);
-  if (sel.value === 'custom') {
-    factorInput.style.display = 'inline';
-  } else {
-    factorInput.style.display = 'none';
-    factorInput.value = sel.value === 'cabinet' ? 3.5 :
-                        sel.value === 'lowcabinet' ? 3.0 :
-                        sel.value === 'floor' ? 1.0 : 1.1;
-  }
+  
+  // 为投影对比区的动态元素绑定事件
+  document.querySelectorAll('.proj-type-select').forEach(select => {
+    select.addEventListener('change', function() {
+      const roomId = this.getAttribute('data-room');
+      const factorInput = document.querySelector(`.proj-factor-input[data-room="${roomId}"]`);
+      if (this.value === 'custom') {
+        factorInput.style.display = 'inline';
+      } else {
+        factorInput.style.display = 'none';
+        factorInput.value = this.value === 'cabinet' ? 3.5 :
+                            this.value === 'lowcabinet' ? 3.0 :
+                            this.value === 'floor' ? 1.0 : 1.1;
+      }
+    });
+  });
+  
+  document.getElementById('compareNowBtn').addEventListener('click', doCompare);
 }
 
 function doCompare() {
@@ -377,8 +489,8 @@ function doCompare() {
 
   for (const d of res.details) {
     const roomId = d.name.replace(/\s+/g, '_');
-    const projInput = parseFloat(document.getElementById(`p_${roomId}`).value);
-    const factorInput = document.getElementById(`factor_${roomId}`);
+    const projInput = parseFloat(document.querySelector(`.proj-area-input[data-room="${roomId}"]`).value);
+    const factorInput = document.querySelector(`.proj-factor-input[data-room="${roomId}"]`);
     let factor = parseFloat(factorInput.value);
 
     if (isNaN(projInput) || projInput < 0) { 
@@ -430,7 +542,10 @@ function sharePage() {
 }
 
 async function exportToPDF() {
-  if (!window.calcResult) { alert("请先完成计算！"); return; }
+  if (!window.calcResult) { 
+    alert("请先完成计算！"); 
+    return; 
+  }
 
   let report = `<h2>一、计算依据</h2>
     <p>标准：《GB/T 39598-2021 基于极限甲醛释放量的人造板室内承载限量指南》</p>
@@ -485,10 +600,102 @@ async function exportToPDF() {
   document.getElementById('fullReport').style.display = 'none';
 }
 
-// 初始化
-addRoom();
+// ========== 新增：专业版激活系统 ==========
+
+// 🔧 需要你修改：必须和你发放的激活码前缀一致
+const VALID_PREFIX = "PRO-2025-dlxw";
+
+/**
+ * 检查用户是否已激活专业版
+ */
+function isProUser() {
+  const savedKey = localStorage.getItem('board_cutter_pro_key');
+  return savedKey && savedKey.startsWith(VALID_PREFIX);
+}
+
+/**
+ * 显示专业版功能（导出按钮）
+ */
+function showProFeatures() {
+  document.getElementById('exportPdfBtn').style.display = 'inline-block';
+  document.getElementById('upgradePrompt').style.display = 'none';
+  document.getElementById('activateSection').style.display = 'block';
+}
+
+/**
+ * 显示升级提示和激活输入框
+ */
+function showUpgradePrompt() {
+  document.getElementById('exportPdfBtn').style.display = 'none';
+  document.getElementById('upgradePrompt').style.display = 'block';
+  document.getElementById('activateSection').style.display = 'block';
+}
+
+/**
+ * 更新专业版 UI 显示状态
+ */
+function updateProUI() {
+  if (isProUser()) {
+    showProFeatures();
+  } else {
+    showUpgradePrompt();
+  }
+}
+
+/**
+ * 激活专业版
+ */
+function activatePro() {
+  const input = document.getElementById('licenseInput').value.trim();
+  const msgEl = document.getElementById('activateMsg');
+
+  if (!input) {
+    msgEl.textContent = '请输入激活码！';
+    msgEl.style.color = 'red';
+    return;
+  }
+
+  if (input.startsWith(VALID_PREFIX)) {
+    localStorage.setItem('board_cutter_pro_key', input);
+    msgEl.textContent = '🎉 激活成功！页面即将刷新...';
+    msgEl.style.color = 'green';
+    setTimeout(() => location.reload(), 1000);
+  } else {
+    msgEl.textContent = '❌ 激活码无效，请检查格式是否为 PRO-2025-XXX！';
+    msgEl.style.color = 'red';
+  }
+}
+
+// ========== 页面加载完成后初始化界面 ==========
+
+/**
+ * 初始化应用
+ */
+function initializeApp() {
+  // 如果已激活，显示导出按钮；否则显示升级提示
+  if (isProUser()) {
+    showProFeatures();
+  } else {
+    showUpgradePrompt();
+  }
+  
+  // 为所有按钮添加事件监听器
+  document.getElementById('addRoomBtn').addEventListener('click', addRoom);
+  document.getElementById('calcBtn').addEventListener('click', calculate);
+  document.getElementById('compareBtn').addEventListener('click', showProjection);
+  document.getElementById('exportPdfBtn').addEventListener('click', exportToPDF);
+  document.getElementById('shareBtn').addEventListener('click', sharePage);
+  document.getElementById('activateBtn').addEventListener('click', activatePro);
+  document.getElementById('toggleComplexityHelp').addEventListener('click', toggleComplexityHelp);
+  
+  // 初始化第一个房间
+  addRoom();
+}
+
+// 🔧 确保在 DOM 加载完成后再执行初始化
+document.addEventListener('DOMContentLoaded', initializeApp);
+
 </script>
 
 </body>
-
 </html>
