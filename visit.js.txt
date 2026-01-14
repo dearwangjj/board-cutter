@@ -1,0 +1,18 @@
+// api/visit.js
+const { createClient } = require('@vercel/redis');
+
+module.exports = async function (req, res) {
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Only GET allowed' });
+  }
+
+  try {
+    const redis = createClient();
+    const count = await redis.incr('visit_count');
+    await redis.expire('visit_count', 2592000); // 30天过期
+    res.status(200).json({ totalVisits: count });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};

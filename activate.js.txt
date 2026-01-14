@@ -1,0 +1,28 @@
+// api/activate.js
+const { createClient } = require('@vercel/redis');
+
+module.exports = async function (req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Only POST allowed' });
+  }
+
+  const { licenseKey } = req.body;
+  if (!licenseKey || typeof licenseKey !== 'string') {
+    return res.status(400).json({ error: 'Missing licenseKey' });
+  }
+
+  try {
+    const redis = createClient();
+    const isValid = await redis.sismember('valid_licenses', licenseKey);
+    
+    if (isValid) {
+      await redis.sadd('used_licenses', licenseKey);
+      res.status(200).json({ valid: true, message: '激活成功' });
+    } else {
+      res.status(200).json({ valid: false, message: '无效激活码' });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Validation error' });
+  }
+};

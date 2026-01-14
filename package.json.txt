@@ -1,0 +1,12 @@
+{
+  "name": "formaldehyde-calculator",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "echo 'No dev server needed'"
+  },
+  "dependencies": {
+    "@vercel/redis": "^1.0.0"
+  }
+}
